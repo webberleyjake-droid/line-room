@@ -1,0 +1,11 @@
+{
+  // Line Room deploys as a Worker serving the static site/ directory.
+  // Cloudflare's dashboard can infer this, but keeping it here makes the
+  // deploy explicit and reviewable, and is where D1/KV bindings go when
+  // the slips + bet-log features move off the Claude artifact runtime.
+  "name": "line-room",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./site"
+  }
+}
