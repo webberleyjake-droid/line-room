@@ -7,5 +7,13 @@
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./site"
-  }
+  },
+
+  // Served from a subdomain, not the apex: empirehq.win is the hub, and
+  // Line Room is one tenant on it. workers.dev stays disabled so there is
+  // no second hostname bypassing Access.
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "lines.empirehq.win", "custom_domain": true }
+  ]
 }
