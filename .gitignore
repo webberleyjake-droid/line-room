@@ -9,3 +9,7 @@ kalshi_docs.json
 kalshi_docs/
 logs.txt
 sync_out/
+
+# Local wrangler state: caches the account id and name. Never commit.
+.wrangler/
+.dev.vars
