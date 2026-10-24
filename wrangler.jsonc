@@ -1,19 +1,31 @@
 {
-  // Line Room deploys as a Worker serving the static site/ directory.
-  // Cloudflare's dashboard can infer this, but keeping it here makes the
-  // deploy explicit and reviewable, and is where D1/KV bindings go when
-  // the slips + bet-log features move off the Claude artifact runtime.
+  // Line Room deploys as a Worker serving the static site/ directory, behind
+  // the Empire session gate. The Worker checks for a signed session cookie
+  // before serving anything; without one it bounces to empirehq.win to log in.
   "name": "line-room",
+  "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+
+  // run_worker_first matters: without it Cloudflare serves matching static
+  // files before the Worker runs, and the gate never executes — the JSON
+  // under site/data/ would be readable by anyone.
   "assets": {
-    "directory": "./site"
+    "directory": "./site",
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
 
   // Served from a subdomain, not the apex: empirehq.win is the hub, and
   // Line Room is one tenant on it. workers.dev stays disabled so there is
-  // no second hostname bypassing Access.
+  // no second hostname bypassing the gate.
   "workers_dev": false,
   "routes": [
     { "pattern": "lines.empirehq.win", "custom_domain": true }
   ]
+
+  // Secrets (set with `wrangler secret put`, never committed):
+  //   AUTH_SECRET  cookie signing key — must match empire-hub exactly
+  //   USERS        JSON map of sha256(passphrase) -> display name
+  //
+  // Both are managed by ../empire-hub/tools/passphrase.js
 }

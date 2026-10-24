@@ -10,8 +10,12 @@ NFL betting trends, public splits, Kalshi + ilani odds. Python collectors feed J
   rebases onto newest `main`, and retries — safe when two workflows push at once.
 - **Front end**: `site/` is a fully static site. `index.html` fetches `data/*.json` with
   relative paths. Serving the folder is the whole deployment; there is no build step.
-- **Destination**: Cloudflare Pages, output directory `site`, no build command,
-  git-connected so every workflow push redeploys. Domain: `empirehq.win`.
+- **Destination**: a Cloudflare Worker (`wrangler.jsonc`) serving `site/` as static
+  assets, git-connected so every workflow push redeploys. Domain: `lines.empirehq.win`.
+- **Auth**: `src/index.js` checks a signed session cookie before serving anything and
+  bounces to `empirehq.win` to log in if there isn't one. `run_worker_first: true` is
+  load-bearing — without it Cloudflare serves `site/data/*.json` before the Worker runs
+  and the data is public. `/__me` returns the current user as JSON.
 
 ## The database layer
 
@@ -32,8 +36,11 @@ It uses nine collections, but only four need a real backend:
 API surface is small: `collection(x).add`, `doc(p).set`, `doc(p).update`, `doc(p).delete`,
 plus reads. Identity comes from `user.id()`, `user.canEdit()`, `user.isOwner()`.
 
-Porting means a shim Worker over D1 exposing those methods, with identity from the
-Cloudflare Access header, and replacing the `S.db`/`S.me` initialization. The UI is untouched.
+Porting means a shim Worker over D1 exposing those methods, with identity from `/__me`
+(the session cookie), and replacing the `S.db`/`S.me` initialization. The UI is untouched.
+
+Note the API shape is Firestore's — it was modeled on it. Worth remembering if D1 ever
+feels like the wrong fit, though staying on Cloudflare avoids another account.
 
 ## Gotchas
 
