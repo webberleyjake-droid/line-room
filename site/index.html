@@ -1859,41 +1859,75 @@ function renderAll() {
   try { const r = await fetch("data/kalshi.json"); if (r.ok) { const k = await r.json(); S.kalshi = k.games || {}; S.kalshiAt = k.generated; renderProps(); renderParlays(); renderIlani(); renderCard(); if (S.gameView) renderGame() } } catch (e) {}
   try { const r = await fetch("data/propsplits.json"); if (r.ok) { S.propsplits = await r.json(); renderProps() } } catch (e) {}
   try { const r = await fetch("data/splits.json"); if (r.ok) { S.splits = await r.json(); renderWeek(); renderTicker(); renderParlays(); renderIlani(); renderCard() } } catch (e) {}
-  if (!window.claude?.use) return;
-  const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
-  S.db = db; S.user = user; S.owner = user ? await user.canEdit() : false;
-  S.me = user ? await user.id() : null; S.isOwnerReal = user ? await user.isOwner() : false;
-  if (!db) { renderAll(); return }
-  db.collection("splits").onSnapshot(snap => {
-    S.splits = {}; snap.docs.forEach(d => S.splits[d.id] = d.data()); renderWeek(); renderTicker(); renderParlays(); renderIlani(); renderCard(); if (S.gameView) renderGame();
-  }, () => {});
-  db.collection("splitshist").onSnapshot(snap => {
-    S.hist = {}; snap.docs.forEach(d => { S.hist[d.id] = d.data().snaps || [] }); renderWeek(); if (S.gameView) renderGame();
-  }, () => {});
-  db.collection("kalshi").onSnapshot(snap => {
-    if (!snap.docs.length) return;
-    S.kalshi = {}; snap.docs.forEach(d => { const x = d.data(); S.kalshi[d.id] = x.rows || []; S.kalshiAt = x.updated || S.kalshiAt }); renderParlays(); renderIlani(); renderCard();
-    renderProps(); if (S.gameView) renderGame();
-  }, () => {});
-  db.collection("ilani").onSnapshot(snap => {
-    if (!snap.docs.length) return;
-    S.ilani = {}; snap.docs.forEach(d => { const x = d.data(); S.ilani[d.id] = x; S.ilaniAt = x.updated || S.ilaniAt }); renderIlani(); renderCard();
-  }, () => {});
-  db.collection("propsplits").onSnapshot(snap => {
-    S.propsplits = {}; snap.docs.forEach(d => S.propsplits[d.id] = d.data()); renderProps(); if (S.gameView) renderGame();
-  }, () => {});
+  // Self-hosted: identity and the slip store come from this site's own Worker.
+  // Splits, Kalshi and ilani are already loaded from data/*.json above, so only
+  // slips, bets and settings need a backend.
+  let meInfo = null;
+  try { const r = await fetch("/__me"); if (r.ok) meInfo = await r.json() } catch (e) {}
+  if (!meInfo) { renderAll(); return }
+  S.me = meInfo.name; S.owner = true; S.isOwnerReal = !!meInfo.owner;
+  S.user = { id: async () => S.me, canEdit: async () => true, isOwner: async () => !!meInfo.owner };
+
+  // Line movement history, written by the collectors alongside the other JSON
+  try {
+    const r = await fetch("data/splitshist.json");
+    if (r.ok) {
+      const h = await r.json(); S.hist = {};
+      for (const k in h) S.hist[k] = h[k].snaps || h[k] || [];
+      renderWeek(); if (S.gameView) renderGame();
+    }
+  } catch (e) {}
+
+  // Minimal stand-in for the document API the UI expects. onSnapshot becomes a
+  // poll that only fires its callback when the server's revision changes.
+  const db = (() => {
+    const subs = []; let cache = {}, rev = "", timer = null;
+    const snap = rows => ({ docs: (rows || []).map(r => ({ id: r.id, data: () => r.data })) });
+    const fire = s => { try { s.cb(snap(cache[s.coll])) } catch (e) {} };
+    async function poll() {
+      try {
+        const r = await fetch("/__db/sync?rev=" + encodeURIComponent(rev));
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j.unchanged) return;
+        rev = j.rev; cache = j.collections || {}; subs.forEach(fire);
+      } catch (e) {}
+    }
+    const schedule = ms => { clearTimeout(timer); timer = setTimeout(run, ms) };
+    function run() { poll().finally(() => schedule(5000)) }
+    const send = (op, path, data) =>
+      fetch("/__db/write", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, path, data }) })
+        .then(r => r.json()).then(j => { schedule(350); return j });
+    const docRef = path => ({
+      set: d => send("set", path, d),
+      update: d => send("update", path, d),
+      delete: () => send("delete", path)
+    });
+    return {
+      doc: docRef,
+      collection: coll => ({
+        add: d => send("add", coll, d),
+        onSnapshot: cb => { subs.push({ coll, cb }); if (cache[coll]) fire({ coll, cb }); return () => {} }
+      }),
+      start: () => poll().then(() => { subs.forEach(fire); schedule(5000) })
+    };
+  })();
+  S.db = db;
+
   db.collection("settings").onSnapshot(snap => {
     const d = snap.docs.find(x => x.id === "parlays"); S.skip = new Set(d ? d.data().skip || [] : []); renderParlays(); renderIlani(); renderCard();
   }, () => {});
   db.collection("slips").onSnapshot(snap => {
     S.groupSlips = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => Array.isArray(x.legs)); renderParlays(); renderProps();
   }, () => {});
-  if (S.me) db.collection("data/users/" + S.me).onSnapshot(snap => {
+  db.collection("data/users/" + S.me).onSnapshot(snap => {
     S.mySlips = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.type === "slip" && Array.isArray(x.legs)); renderParlays(); renderProps();
   }, () => {});
   db.collection("bets").onSnapshot(snap => {
     S.bets = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderBets();
   }, () => {});
+  db.start();
   renderAll();
 })();
 </script>

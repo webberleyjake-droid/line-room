@@ -15,6 +15,22 @@
     "run_worker_first": true
   },
 
+  // Slips, bets and settings. Odds and splits do NOT live here — they arrive
+  // as JSON in site/data/ from the GitHub Actions collectors.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "line-room",
+      "database_id": "83704a3a-fc35-45e0-8655-b5f52d4229fd"
+    }
+  ],
+
+  // Who may delete other people's bets and manage the skip list. Must match
+  // the name used in `passphrase.js add "<name>"`.
+  "vars": {
+    "OWNER": "Jake"
+  },
+
   // Served from a subdomain, not the apex: empirehq.win is the hub, and
   // Line Room is one tenant on it. workers.dev stays disabled so there is
   // no second hostname bypassing the gate.
@@ -25,7 +41,6 @@
 
   // Secrets (set with `wrangler secret put`, never committed):
   //   AUTH_SECRET  cookie signing key — must match empire-hub exactly
-  //   USERS        JSON map of sha256(passphrase) -> display name
   //
-  // Both are managed by ../empire-hub/tools/passphrase.js
+  // Passphrases are managed by ../empire-hub/tools/passphrase.js
 }

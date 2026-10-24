@@ -19,28 +19,31 @@ NFL betting trends, public splits, Kalshi + ilani odds. Python collectors feed J
 
 ## The database layer
 
-`index.html` contains a slips / shared-parlay / bet-log system gated behind
-`if (!window.claude?.use) return;` (~line 1862). Without that runtime the site renders
-normally and those features simply never initialize.
+Slips, the bet log and settings live in **D1** (`schema.sql`, one `docs` table keyed by
+path). `src/db.js` serves them; `site/index.html` talks to it through a small shim near
+the bottom of its script.
 
-It uses nine collections, but only four need a real backend:
-
-| Collection | Keep? |
+| Collection | Where it lives |
 |---|---|
-| `bets` | yes — bet log |
-| `slips` | yes — shared parlays |
-| `data/users/<uid>/<id>` | yes — private slips, per user |
-| `settings/parlays` | yes — skip list |
-| `splits`, `splitshist`, `kalshi`, `ilani`, `propsplits` | no — same data arrives as `site/data/*.json` |
+| `slips` | D1 — shared parlays, any member may edit |
+| `data/users/<name>/<id>` | D1 — private slips, only that person can read or write |
+| `bets` | D1 — bet log; `by` is stamped server-side, only the owner deletes others' |
+| `settings/parlays` | D1 — skip list, owner only |
+| `splits`, `kalshi`, `ilani`, `propsplits` | `site/data/*.json`, straight from the collectors |
+| `splitshist` | `site/data/splitshist.json`, written by `splitshist.py` |
 
-API surface is small: `collection(x).add`, `doc(p).set`, `doc(p).update`, `doc(p).delete`,
-plus reads. Identity comes from `user.id()`, `user.canEdit()`, `user.isOwner()`.
+The front end's API is Firestore-shaped because it was modeled on it. Rather than rewrite
+~1,500 lines of UI, the shim reimplements just what's used: `collection(c).add/onSnapshot`
+and `doc(p).set/update/delete`.
 
-Porting means a shim Worker over D1 exposing those methods, with identity from `/__me`
-(the session cookie), and replacing the `S.db`/`S.me` initialization. The UI is untouched.
+**`onSnapshot` is a poll, not a subscription.** `GET /__db/sync` returns everything you may
+see plus a revision string (`count:newestTimestamp`); the client re-polls every 5 seconds,
+and 350ms after any write, firing callbacks only when the revision changes. For a handful
+of people watching slips this is indistinguishable from realtime and needs no Durable
+Objects. If it ever needs to be genuinely live, that's the thing to reach for.
 
-Note the API shape is Firestore's — it was modeled on it. Worth remembering if D1 ever
-feels like the wrong fit, though staying on Cloudflare avoids another account.
+Identity comes from `/__me`, which returns `{name, owner}` off the session cookie. `OWNER`
+is a plain var in `wrangler.jsonc` and must match a name registered via `passphrase.js`.
 
 ## Gotchas
 

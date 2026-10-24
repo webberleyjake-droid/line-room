@@ -28,4 +28,8 @@ jobs:
           out=$(python collect_splits.py --dump 2>&1); code=$?
           echo "$out"
           if [ $code -ne 0 ]; then echo "::error::collect_splits failed: $(echo "$out" | tail -5 | tr '\n' ' ')"; else echo "::notice::$(echo "$out" | tail -1)"; fi
-      - run: bash commit.sh "Splits $(date -u +%FT%H:%MZ)" site/data/splits.json data/splits_history debug
+      - name: Rebuild line-movement history for the site
+        run: |
+          out=$(python splitshist.py 2>&1) || echo "::warning::splitshist failed: $out"
+          echo "$out"
+      - run: bash commit.sh "Splits $(date -u +%FT%H:%MZ)" site/data/splits.json site/data/splitshist.json data/splits_history debug
